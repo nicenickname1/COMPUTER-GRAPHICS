@@ -1,0 +1,48 @@
+            <html>
+            <head>
+            <meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+            <title>2D Sierpinski Carpet</title>
+
+
+            <script id="vertex-shader" type="x-shader/x-vertex">
+            attribute vec4 vPosition;
+
+            void
+            main()
+            {
+                gl_Position = vPosition;
+            }
+            </script>
+
+            <script id="fragment-shader" type="x-shader/x-fragment">
+            precision mediump float;
+            uniform vec4 uColor;
+
+            void
+            main()
+            {
+                gl_FragColor = vec4( 1.0, 0.0, 0.0, 1.0 );
+                gl_FragColor = uColor;
+            }
+            </script>
+
+            <script type="text/javascript" src="webgl-utils.js"></script>
+            <script type="text/javascript" src="initShaders.js"></script>
+            <script type="text/javascript" src="MV.js"></script>
+            <script type="text/javascript" src="sierpinsky.js"></script>
+            </head>   
+
+            <body>
+            <canvas id="gl-canvas" width="512" height="512">
+            Oops ... your browser doesn't support the HTML5 canvas element
+            </canvas>
+
+            <button id="red">R</button>
+            <button id="green">G</button>
+            <button id="blue">B</button>
+
+            <input id="slider" type="range" min="1" max="5" step="1" value="3">
+            <span id="countText">3</span> <!--이 부분에서 슬라이더의 현재 값을 표시해서 바로 확인할 수 있게 하는 방법을 ai에게 물어보고 비슷하게 따라해보았습니다 -->
+
+            </body>
+            </html>
