@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>지구 모형</title>
+
+<script id="depth-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 vPosition;
+uniform mat4 lightMatrix;
+void main() {
+  gl_Position = lightMatrix * vPosition;
+}
+</script>
+
+<script id="depth-fragment-shader" type="x-shader/x-fragment">
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+const float PackUpscale = 256.0 / 255.0;
+const vec3 PackFactors = vec3(256.0 * 256.0 * 256.0, 256.0 * 256.0, 256.0);
+
+vec4 pack(float v) {
+  vec4 r = vec4(fract(v * PackFactors), v);
+  r.yzw -= r.xyz / 256.0;
+  return r * PackUpscale;
+}
+
+void main() {
+  gl_FragColor = pack(gl_FragCoord.z);
+}
+</script>
+
+<script id="vertex-shader" type="x-shader/x-vertex">
+attribute vec4 vPosition;
+attribute vec4 vNormal;
+attribute vec2 vTexCoord;
+
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform mat3 normalMatrix;
+uniform mat4 lightMatrix;
+uniform float heightScale;
+
+varying vec3 N;
+varying vec3 pos;
+varying float h;
+varying vec2 fTexCoord;
+varying vec4 fLightPos;
+
+void main() {
+  fTexCoord = vTexCoord;
+  h = (length(vPosition.xyz) - 1.0) / heightScale;
+
+  vec4 pe = modelViewMatrix * vPosition;
+  pos = pe.xyz;
+  N = normalMatrix * vNormal.xyz;
+  fLightPos = lightMatrix * vPosition;
+  gl_Position = projectionMatrix * pe;
+}
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+uniform vec4 lightPosition;
+uniform vec4 lightAmbient, lightDiffuse, lightSpecular;
+uniform float shininess;
+uniform float shadowOn;
+uniform sampler2D texture;
+uniform sampler2D shadowMap;
+
+varying vec3 N;
+varying vec3 pos;
+varying float h;
+varying vec2 fTexCoord;
+varying vec4 fLightPos;
+
+float unpack(vec4 c) {
+  const float UnpackDownscale = 255.0 / 256.0;
+  const vec4 UnpackFactors = UnpackDownscale / vec4(256.0 * 256.0 * 256.0, 256.0 * 256.0, 256.0, 1.0);
+  return dot(c, UnpackFactors);
+}
+
+float visibility(float nl) {
+  vec3 sc = fLightPos.xyz / fLightPos.w * 0.5 + 0.5;
+  if (sc.x < 0.0 || sc.x > 1.0 || sc.y < 0.0 || sc.y > 1.0) return 1.0;
+
+  float tanT = sqrt(max(1.0 - nl * nl, 0.0)) / max(nl, 0.1);
+  float bias = 0.0006 + 0.0008 * min(tanT, 4.0);
+  float lit = 0.0;
+  for (int i = -1; i <= 1; i++)
+    for (int j = -1; j <= 1; j++) {
+      float d = unpack(texture2D(shadowMap, sc.xy + vec2(float(i), float(j)) / 2048.0));
+      lit += (sc.z - bias > d) ? 0.0 : 1.0;
+    }
+  return lit / 9.0;
+}
+
+void main() {
+  vec3 mat = texture2D(texture, fTexCoord).rgb;
+  float ks = h <= 0.002 ? 1.0 : 0.0;
+
+  vec3 n = normalize(N);
+  vec3 L = normalize(lightPosition.xyz);
+  vec3 V = normalize(-pos);
+  vec3 H = normalize(L + V);
+
+  float nl = dot(L, n);
+  float Kd = max(nl, 0.0);
+  float Ks = nl > 0.0 ? pow(max(dot(n, H), 0.0), shininess) : 0.0;
+
+  float vis = shadowOn > 0.5 ? visibility(nl) : 1.0;
+
+  vec3 ambient  = lightAmbient.rgb * mat;
+  vec3 diffuse  = vis * Kd * lightDiffuse.rgb * mat;
+  vec3 specular = vis * ks * 0.8 * Ks * lightSpecular.rgb;
+
+  gl_FragColor = vec4(ambient + diffuse + specular, 1.0);
+}
+</script>
+
+<script id="sun-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 sunPosition;
+uniform mat4 viewMatrix, projectionMatrix;
+uniform vec3 sunOffset;
+void main() {
+  gl_Position = projectionMatrix * viewMatrix * (sunPosition + vec4(sunOffset, 0.0));
+  gl_PointSize = 14.0;
+}
+</script>
+<script id="sun-fragment-shader" type="x-shader/x-fragment">
+precision mediump float;
+void main() {
+  vec2 d = gl_PointCoord - vec2(0.5);
+  if (dot(d, d) > 0.25) discard;
+  gl_FragColor = vec4(1.0, 0.9, 0.3, 1.0);
+}
+</script>
+
+<script src="webgl-utils.js"></script>
+<script src="initShaders.js"></script>
+<script src="MV.js"></script>
+<script src="earthMesh.js"></script>
+</head>
+<body>
+<h3>지구 모형</h3>
+
+<canvas id="gl-canvas" width="600" height="600">
+WebGL을 지원하지 않는 브라우저입니다.
+</canvas>
+
+<br>
+시점 상하 θ -1.5 <input id="slider0" type="range" min="-1.5" max="1.5" step="0.01" value="0.3"> 1.5
+<span id="vTheta"></span>
+<br>
+시점 좌우 φ -3.14 <input id="slider1" type="range" min="-3.14" max="3.14" step="0.01" value="0"> 3.14
+<span id="vPhi"></span>
+<br>
+지구 자전 -60 <input id="slider4" type="range" min="-60" max="120" step="1" value="15"> 120
+<span id="vSpin"></span>
+<br>
+광원 공전 -60 <input id="slider5" type="range" min="-60" max="120" step="1" value="8"> 120
+<span id="vLight"></span>
+<br>
+지축 기울기 0 <input id="slider6" type="range" min="0" max="45" step="0.5" value="23.5"> 45
+<span id="vTilt"></span>
+<br>
+<br>
+위도 -90 <input id="slider7" type="range" min="-90" max="90" step="0.5" value="28"> 90
+<span id="vLat"></span>
+<br>
+경도 -180 <input id="slider8" type="range" min="-180" max="180" step="0.5" value="87"> 180
+<span id="vLon"></span>
+<br>
+<span id="info"></span>
+</body>
+</html>
